@@ -4,11 +4,9 @@
 from os import mkdir, makedirs, system
 from os.path import exists
 from time import sleep
-import json
 from requests import session
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -29,13 +27,16 @@ s = session()
 
 def init():
     global chd_url, user_name, password
-    with open("config.json", 'r') as config_fp:
-        config_data = json.load(config_fp)
-    chd_url = config_data['chd_url']
-    user_name = config_data['username']
-    password = config_data['password']
-    if config_data['Headless'] == 'True':
-        chrome_opt.add_argument('--headless')
+    chd_url = "http://portal.chd.edu.cn"
+    chrome_opt.add_argument('--headless')
+    # chrome_opt.add_argument('--disable-infobars')
+    # with open("config.json", 'r') as config_fp:
+    #     config_data = json.load(config_fp)
+    # chd_url = config_data['chd_url']
+    # user_name = config_data['username']
+    # password = config_data['password']
+    # if config_data['Headless'] == 'True':
+    #     chrome_opt.add_argument('--headless')
     # if config_data['Disable_infobars'] == 'True':
         # chrome_opt.add_argument('--disable-infobars')
 
@@ -52,7 +53,9 @@ def startDriver():
 
 def login():
     print('logging in...')
-    var = WebDriverWait(driver, 10).until(
+    user_name = input('Please enter your user_name:')
+    password = input('Please enter your password:')
+    WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.ID, "username"))
     ).send_keys(user_name)
     WebDriverWait(driver, 10).until(
@@ -97,6 +100,8 @@ def searchNotices():
 
 
 def parseNews(title):
+    # TODO:把title中的反斜杠替换
+    title = title.replace('/', '_')
     global notice_number
     print('parsing notice...')
     driver.switch_to.window(driver.window_handles[-1])
@@ -113,9 +118,11 @@ def parseNews(title):
         attachment_element = None
 
     print('writing content...')
+    if not exists('notices'):
+        mkdir('notices')
     # TODO: 记录内容
     if not exists('notices/{}'.format(title)):
-        makedirs('notices/{}'.format(title))
+        mkdir('notices/{}'.format(title))
     with open('notices/{}/'.format(title) + title + '.txt', 'w+', encoding='utf-8') as fp:
         fp.write(content.text)
     print('writing succeed!')
@@ -143,7 +150,7 @@ def parseNews(title):
 
 
 def getAttachmentUrl(source: str) -> str:
-    soup = BeautifulSoup(source, 'lxml')
+    soup = BeautifulSoup(source)
     res = soup.find('a')['href']
 
     return chd_url + '/' + res
@@ -164,9 +171,8 @@ def downloadAttachments():
             ipl_cookie = cookie['value']
         if cookie['name'] == 'MOD_AUTH_CAS':
             mod_cookie = cookie['value']
-    with open('attachment_urls.json', 'r+', encoding='utf-8') as fp:
-        url_data = json.load(fp)
-    for title, info in url_data.items():
+
+    for title, info in attachments.items():
         # 下面的这个函数封装在 downloadAttachment.py 模块中
         downloadAttachment(title, info['name'], info['url'], ipl_cookie, mod_cookie, rou_cookie, jse_cookie)
 
@@ -212,7 +218,7 @@ def main():
         downloadAttachments()
 
     except Exception as e:
-        raise
+        print(e)
     finally:
         print('quiting...')
         # print('====== the notices list ======')
@@ -220,12 +226,12 @@ def main():
         #     print(title)
         #     sleep(0.1)
         driver.quit()
-        with open("attachment_urls.json", "w+", encoding='utf-8') as fp:
-            json.dump(attachments, fp, indent=1, ensure_ascii=False)
+        # with open("attachment_urls.json", "w+", encoding='utf-8') as fp:
+            # json.dump(attachments, fp, indent=1, ensure_ascii=False)
         print('total saved notices number: {}'.format(notice_number))
         print('quit succeed!')
-        system('pause')
 
 
 if __name__ == '__main__':
     main()
+    system('pause')

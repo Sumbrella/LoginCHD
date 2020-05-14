@@ -1,7 +1,0 @@
-{
- "chd_url": "http://portal.chd.edu.cn",
- "username": "2019",
- "password": "wang",
- "Headless":  "True",
- "Disable_infobars" : "False"
-}
