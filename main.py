@@ -43,7 +43,7 @@ def init():
 
 def startDriver():
     global driver
-    driver = webdriver.Chrome('../chromedriver.exe', options=chrome_opt)
+    driver = webdriver.Chrome('chromedriver.exe', options=chrome_opt)
     print('Connecting...')
     driver.get(chd_url)
     print('connect succeed!')
