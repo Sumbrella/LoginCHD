@@ -1,7 +1,6 @@
 """
-
 """
-from os import mkdir, makedirs, system
+from os import mkdir, system
 from os.path import exists
 from time import sleep
 from requests import session
@@ -12,12 +11,13 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.remote.webelement import WebElement
-
+from selenium.common.exceptions import TimeoutException
 
 chd_url = ""
 user_name = ""
 password = ""
 driver: webdriver.Chrome
+driver_path = "" # "chromedriver.exe"
 notice_number = 0
 notice_titles = []
 attachments = {}
@@ -26,8 +26,9 @@ s = session()
 
 
 def init():
-    global chd_url, user_name, password
+    global chd_url, driver_path
     chd_url = "http://portal.chd.edu.cn"
+    driver_path = None
     chrome_opt.add_argument('--headless')
     # chrome_opt.add_argument('--disable-infobars')
     # with open("config.json", 'r') as config_fp:
@@ -43,7 +44,10 @@ def init():
 
 def startDriver():
     global driver
-    driver = webdriver.Chrome('chromedriver.exe', options=chrome_opt)
+    if driver_path is None:
+        driver = webdriver.Chrome(options=chrome_opt)
+    else:
+        driver = webdriver.Chrome(driver_path, options=chrome_opt)
     print('Connecting...')
     driver.get(chd_url)
     print('connect succeed!')
@@ -74,7 +78,7 @@ def visitNoticesPage():
                                                   '2]/div[2]/div/div[2]/div[2]/a'))
     ).click()
     driver.switch_to.window(driver.window_handles[1])
-    print('changed to news page!')
+    print('changed to notice page!')
     sleep(2)
 
 
@@ -101,48 +105,57 @@ def searchNotices():
 
 def parseNews(title):
     # TODO:把title中的反斜杠替换
-    title = title.replace('/', '_')
+    title: str = title.replace('/', '_')
     global notice_number
     print('parsing notice...')
     driver.switch_to.window(driver.window_handles[-1])
-    content = WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((By.ID, 'bulletin-contentpe65'))
-    )
-
+    # TODO：获取消息和附件信息
+    content = None
+    attachment_element = None
+    try:
+        content = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, 'bulletin-contentpe65'))
+        )
+    except TimeoutException as te:
+        print('fail to get content of {}'.format(title))
     try:
         attachment_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, '/html/body/div[1]/div[2]/div[2]/ul'))
         )
-    except Exception as e:
-        print(e)
-        attachment_element = None
+    except TimeoutException as te:
+        print('no attachment find!')
 
     print('writing content...')
     if not exists('notices'):
         mkdir('notices')
-    # TODO: 记录内容
-    if not exists('notices/{}'.format(title)):
-        mkdir('notices/{}'.format(title))
-    with open('notices/{}/'.format(title) + title + '.txt', 'w+', encoding='utf-8') as fp:
-        fp.write(content.text)
-    print('writing succeed!')
-    notice_number += 1
-    notice_titles.append(title)
+    # TODO: 记录消息内容
+    if content is not None:
+        if not exists('notices/{}'.format(title)):
+            mkdir('notices/{}'.format(title))
+        with open('notices/{}/'.format(title) + title + '.txt', 'w+', encoding='utf-8') as fp:
+            fp.write(content.text)
+        print('writing succeed!')
+        notice_number += 1
+        notice_titles.append(title)
     # TODO: 记录附件
-    if attachment_element:
+    if attachment_element is not None:
         atm_s = attachment_element.find_elements_by_tag_name('li')
         # 第一个 li 元素舍弃
         for atm in atm_s[1:]:
             attachment_name = atm.text
             attachment_url = getAttachmentUrl(atm.get_attribute('innerHTML'))
-            attachments.update(
-                {
-                    title: {
-                        'name': attachment_name,
-                        'url': attachment_url
+            if title not in attachments.keys():
+                attachments.update(
+                    {
+                        title: {
+                            'name': [attachment_name],
+                            'url': [attachment_url]
+                        }
                     }
-                }
-            )
+                )
+            else:
+                attachments[title]['name'].append(attachment_name)
+                attachments[title]['url'].append(attachment_url)
 
     # 关闭页面
     driver.close()
@@ -150,7 +163,7 @@ def parseNews(title):
 
 
 def getAttachmentUrl(source: str) -> str:
-    soup = BeautifulSoup(source)
+    soup = BeautifulSoup(source, 'lxml')
     res = soup.find('a')['href']
 
     return chd_url + '/' + res
@@ -174,7 +187,8 @@ def downloadAttachments():
 
     for title, info in attachments.items():
         # 下面的这个函数封装在 downloadAttachment.py 模块中
-        downloadAttachment(title, info['name'], info['url'], ipl_cookie, mod_cookie, rou_cookie, jse_cookie)
+        for i in range(len(info['name'])):
+            downloadAttachment(title, info['name'][i], info['url'][i], ipl_cookie, mod_cookie, rou_cookie, jse_cookie)
 
 
 def downloadAttachment(title, att_name, url, ipl_cookie, mod_cookie, rou_cookie, jse_cookie):
@@ -201,7 +215,7 @@ def downloadAttachment(title, att_name, url, ipl_cookie, mod_cookie, rou_cookie,
     if not exists('notices/{}/attachments'.format(title)):
         mkdir('notices/{}/attachments'.format(title))
 
-    print('saving attachment: %s ...' % att_name)
+    print('saving %s ...' % att_name)
 
     with open('notices/{}/attachments/{}'.format(title, att_name), 'wb') as fp:
         fp.write(response.content)
@@ -218,16 +232,14 @@ def main():
         downloadAttachments()
 
     except Exception as e:
-        print(e)
+        raise
     finally:
         print('quiting...')
-        # print('====== the notices list ======')
-        # for title in notice_titles:
-        #     print(title)
-        #     sleep(0.1)
+        print('====== the notices list ======')
+        for title in notice_titles:
+            print(title)
+            sleep(0.1)
         driver.quit()
-        # with open("attachment_urls.json", "w+", encoding='utf-8') as fp:
-            # json.dump(attachments, fp, indent=1, ensure_ascii=False)
         print('total saved notices number: {}'.format(notice_number))
         print('quit succeed!')
 
