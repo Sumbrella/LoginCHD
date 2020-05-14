@@ -1,9 +1,10 @@
 """
 
 """
-from os import mkdir, makedirs
+from os import mkdir, makedirs, system
 from os.path import exists
 from time import sleep
+import sys
 # import re
 import json
 from requests import session
@@ -43,7 +44,7 @@ def init():
 
 def startDriver():
     global driver
-    driver = webdriver.Chrome('../chromedriver.exe', options=chrome_opt)
+    driver = webdriver.Chrome('chromedriver.exe', options=chrome_opt)
     print('Connecting...')
     driver.get(chd_url)
     print('connect succeed!')
@@ -225,6 +226,7 @@ def main():
             json.dump(attachments, fp, indent=1, ensure_ascii=False)
         print('total saved notices number: {}'.format(notice_number))
         print('quit succeed!')
+        system('pause')
 
 
 if __name__ == '__main__':
