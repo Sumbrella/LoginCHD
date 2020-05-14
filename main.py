@@ -6,6 +6,7 @@ from os.path import exists
 from time import sleep
 # import re
 import json
+from requests import session
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
@@ -14,8 +15,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.remote.webelement import WebElement
-
-from Examples.Login_chd.downloadAttachment import downloadAttachment
 
 
 chd_url = ""
@@ -26,6 +25,7 @@ notice_number = 0
 notice_titles = []
 attachments = {}
 chrome_opt = Options()
+s = session()
 
 
 def init():
@@ -170,6 +170,37 @@ def downloadAttachments():
     for title, info in url_data.items():
         # 下面的这个函数封装在 downloadAttachment.py 模块中
         downloadAttachment(title, info['name'], info['url'], ipl_cookie, mod_cookie, rou_cookie, jse_cookie)
+
+
+def downloadAttachment(title, att_name, url, ipl_cookie, mod_cookie, rou_cookie, jse_cookie):
+
+    headers = {
+        'Host': 'portal.chd.edu.cn',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/81.0.4044.138 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,'
+                  'application/signed-exchange;v=b3;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Cookie': 'iPlanetDirectoryPro={}; '
+                  'MOD_AUTH_CAS={}; '
+                  'route={}; '
+                  'JSESSIONID={}'.format(ipl_cookie, mod_cookie, rou_cookie, jse_cookie)
+    }
+    # print(headers)
+    print('getting attachment...')
+    response = s.get(url=url, headers=headers)
+    print('got attachment!')
+    if not exists('notices/{}/attachments'.format(title)):
+        mkdir('notices/{}/attachments'.format(title))
+
+    print('saving attachment: %s ...' % att_name)
+
+    with open('notices/{}/attachments/{}'.format(title, att_name), 'wb') as fp:
+        fp.write(response.content)
+    print('saved!')
 
 
 def main():
