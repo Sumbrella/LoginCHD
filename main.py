@@ -4,8 +4,6 @@
 from os import mkdir, makedirs, system
 from os.path import exists
 from time import sleep
-import sys
-# import re
 import json
 from requests import session
 from bs4 import BeautifulSoup
