@@ -98,6 +98,7 @@ def searchNotices():
 
 def parseNews(title):
     global notice_number
+    title = title.replace('/', '_') # 删除title中自带的反斜杠，防止创建文件时出错
     print('parsing notice...')
     driver.switch_to.window(driver.window_handles[-1])
     content = WebDriverWait(driver, 20).until(
