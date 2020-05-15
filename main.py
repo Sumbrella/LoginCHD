@@ -1,5 +1,6 @@
 """
 """
+import json
 from os import mkdir, system
 from os.path import exists
 from time import sleep
@@ -13,15 +14,21 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import TimeoutException
 
+# user_variables
 chd_url = ""
-user_name = ""
-password = ""
+# user_name = "2019900086"
+# password = "wangjuanyu123"
+over_page = 2
+max_notice = 100
 driver: webdriver.Chrome
-driver_path = "" # "chromedriver.exe"
+driver_path = ""  # "chromedriver.exe"
+chrome_opt = Options()
+
+# model variables
 notice_number = 0
 notice_titles = []
 attachments = {}
-chrome_opt = Options()
+now_page = 0
 s = session()
 
 
@@ -56,6 +63,7 @@ def startDriver():
 
 
 def login():
+    global user_name, password
     print('logging in...')
     user_name = input('Please enter your user_name:')
     password = input('Please enter your password:')
@@ -77,13 +85,35 @@ def visitNoticesPage():
         EC.presence_of_element_located((By.XPATH, '/html/body/div[1]/div[2]/table/tbody/tr/td/table/tbody/tr[1]/td['
                                                   '2]/div[2]/div/div[2]/div[2]/a'))
     ).click()
+    # 点击 MORE 进入整个新闻界面
     driver.switch_to.window(driver.window_handles[1])
-    print('changed to notice page!')
+    print('changed to main notice page!')
     sleep(2)
 
 
-def changePage():
-    pass
+def getNotices():
+    while now_page < over_page:
+        searchNotices()
+        changePage(5)
+    searchNotices()
+
+
+def changePage(times):
+    #
+    # driver show in notices main page
+    global now_page
+    try:
+        next_page_button = driver.find_element_by_xpath('/html/body/div[1]/div[2]/div/div[2]/div[2]/div[2]/div/a[3]')
+        next_page_button.click()
+    except Exception as e:
+        print("change to new page error")
+        print(e)
+        # try again
+        changePage(times - 1)
+    else:
+        now_page += 1
+        print('change to page {}'.format(now_page))
+    sleep(2)
 
 
 def searchNotices():
@@ -100,10 +130,10 @@ def searchNotices():
         title = notice.text if notice.text else '???'
         print('Now in page: ***' + title + '***')
         notice.click()  # 打开一个子通知
-        parseNews(title)  # 分析一个子通知
+        parseNotices(title)  # 分析一个子通知
 
 
-def parseNews(title):
+def parseNotices(title):
     # TODO:把title中的反斜杠替换
     title: str = title.replace('/', '_')
     global notice_number
@@ -117,13 +147,16 @@ def parseNews(title):
             EC.presence_of_element_located((By.ID, 'bulletin-contentpe65'))
         )
     except TimeoutException as te:
+        # 如果超时，取消获取这个通知
         print('fail to get content of {}'.format(title))
+        return
     try:
         attachment_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, '/html/body/div[1]/div[2]/div[2]/ul'))
         )
     except TimeoutException as te:
         print('no attachment find!')
+        return
 
     print('writing content...')
     if not exists('notices'):
@@ -157,8 +190,9 @@ def parseNews(title):
                 attachments[title]['name'].append(attachment_name)
                 attachments[title]['url'].append(attachment_url)
 
-    # 关闭页面
+    # close notice page
     driver.close()
+    # change to main notices page
     driver.switch_to.window(driver.window_handles[-1])
 
 
@@ -175,6 +209,7 @@ def downloadAttachments():
     rou_cookie = ''
     ipl_cookie = ''
     mod_cookie = ''
+    # TODO: 通过cookie 构造 header
     for cookie in cookies:
         if cookie['name'] == 'JSESSIONID':
             jse_cookie = cookie['value']
@@ -184,14 +219,6 @@ def downloadAttachments():
             ipl_cookie = cookie['value']
         if cookie['name'] == 'MOD_AUTH_CAS':
             mod_cookie = cookie['value']
-
-    for title, info in attachments.items():
-        # 下面的这个函数封装在 downloadAttachment.py 模块中
-        for i in range(len(info['name'])):
-            downloadAttachment(title, info['name'][i], info['url'][i], ipl_cookie, mod_cookie, rou_cookie, jse_cookie)
-
-
-def downloadAttachment(title, att_name, url, ipl_cookie, mod_cookie, rou_cookie, jse_cookie):
 
     headers = {
         'Host': 'portal.chd.edu.cn',
@@ -208,10 +235,26 @@ def downloadAttachment(title, att_name, url, ipl_cookie, mod_cookie, rou_cookie,
                   'route={}; '
                   'JSESSIONID={}'.format(ipl_cookie, mod_cookie, rou_cookie, jse_cookie)
     }
+
+    for title, info in attachments.items():
+        # 下面的这个函数封装在 downloadAttachment.py 模块中
+        for i in range(len(info['name'])):
+            downloadAttachment(title, info['name'][i], info['url'][i], headers)
+
+
+def downloadAttachment(title, att_name, url, headers):
+
     # print(headers)
     print('getting attachment...')
-    response = s.get(url=url, headers=headers)
+
+    try:
+        response = s.get(url=url, headers=headers)
+    except Exception as e:
+        print(e)
+        print('got attachment failed!')
+        return
     print('got attachment!')
+
     if not exists('notices/{}/attachments'.format(title)):
         mkdir('notices/{}/attachments'.format(title))
 
@@ -228,14 +271,16 @@ def main():
         startDriver()
         login()
         visitNoticesPage()
-        searchNotices()
-        downloadAttachments()
+        getNotices()
+        # downloadAttachments()
 
     except Exception as e:
         raise
     finally:
         print('quiting...')
         print('====== the notices list ======')
+        with open('attachments.txt', 'w+') as fp:
+            json.dump(attachments, fp, indent=2, encoding='utf-8')
         for title in notice_titles:
             print(title)
             sleep(0.1)
